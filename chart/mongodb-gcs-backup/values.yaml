@@ -1,5 +1,5 @@
 image:
-  repository: zoov/mongodb-gcs-backup
+  repository: eu.gcr.io/astral-trees-252816/mongodb-gcs-backup
   tag: latest
   pullPolicy: IfNotPresent
 
