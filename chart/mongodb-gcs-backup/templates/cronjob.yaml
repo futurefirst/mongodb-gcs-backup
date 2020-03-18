@@ -10,7 +10,7 @@ metadata:
 spec:
   concurrencyPolicy: {{ .Values.concurrencyPolicy }}
   failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
-  schedule: {{ .Values.schedule }}
+  schedule: "{{ .Values.schedule }}"
   successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
   jobTemplate:
     spec:

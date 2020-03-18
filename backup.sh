@@ -16,6 +16,7 @@ MONGODB_DB=${MONGODB_DB:-}
 MONGODB_USER=${MONGODB_USER:-}
 MONGODB_PASSWORD=${MONGODB_PASSWORD:-}
 MONGODB_OPLOG=${MONGODB_OPLOG:-}
+MONGODB_QUIET=${MONGODB_QUIET:-}
 SLACK_ALERTS=${SLACK_ALERTS:-}
 SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
 SLACK_CHANNEL=${SLACK_CHANNEL:-}
@@ -25,7 +26,8 @@ SLACK_ICON=${SLACK_ICON:-}
 backup() {
   mkdir -p $BACKUP_DIR
   date=$(date "+%Y-%m-%dT%H:%M:%SZ")
-  archive_name="backup-$date.tar.gz"
+  archive_name="backup-$date.mongodump.gz"
+  teelog_name="$(mktemp)"
 
   cmd_auth_part=""
   if [[ ! -z $MONGODB_USER ]] && [[ ! -z $MONGODB_PASSWORD ]]
@@ -45,7 +47,13 @@ backup() {
     cmd_oplog_part="--oplog"
   fi
 
-  cmd="mongodump --host=\"$MONGODB_HOST\" --port=\"$MONGODB_PORT\" $cmd_auth_part $cmd_db_part $cmd_oplog_part --gzip --archive=$BACKUP_DIR/$archive_name"
+  cmd_quiet_part=""
+  if [[ $MONGODB_QUIET = "true" ]]
+  then
+    cmd_quiet_part="--quiet"
+  fi
+
+  cmd="mongodump --host=\"$MONGODB_HOST\" --port=\"$MONGODB_PORT\" $cmd_auth_part $cmd_db_part $cmd_oplog_part $cmd_quiet_part --gzip --archive=$BACKUP_DIR/$archive_name 2>&1 | tee $teelog_name"
   echo "starting to backup MongoDB host=$MONGODB_HOST port=$MONGODB_PORT"
   eval "$cmd"
 }
@@ -66,7 +74,7 @@ default_api_version = 2
 EOF
   fi
   echo "uploading backup archive to GCS bucket=$GCS_BUCKET"
-  gsutil cp $BACKUP_DIR/$archive_name $GCS_BUCKET
+  gsutil cp $BACKUP_DIR/$archive_name $GCS_BUCKET 2>&1 | tee $teelog_name
 }
 
 send_slack_message() {
@@ -90,15 +98,17 @@ send_slack_message() {
 
 err() {
   err_msg="Something went wrong on line $(caller)"
+  tee_last="$(tail -n 1 $teelog_name)"
   echo $err_msg >&2
   if [[ $SLACK_ALERTS == "true" ]]
   then
-    send_slack_message "danger" "Error while performing mongodb backup" "$err_msg"
+    send_slack_message "danger" "Error while performing mongodb backup" "$err_msg\n$tee_last"
   fi
 }
 
 cleanup() {
   rm $BACKUP_DIR/$archive_name
+  rm $teelog_name
 }
 
 trap err ERR
